@@ -1,7 +1,6 @@
 import express from "express";
 import {
   forgotPassword,
-  login,
   logout,
   refreshTokenHandler,
   resetPassword,
@@ -9,7 +8,6 @@ import {
 
 const router = express.Router();
 
-router.post("/Login", login);
 router.post("/RefreshToken", refreshTokenHandler);
 router.post("/ForgotPassword", forgotPassword);
 router.post("/ResetPassword", resetPassword);
