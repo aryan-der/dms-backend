@@ -10,7 +10,7 @@ import {
   downloadFolder,
 } from "../controllers/folderController.js";
 
-import { verifyToken } from "../middleware/authMiddleware.js"; // ✅ import middleware
+import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
