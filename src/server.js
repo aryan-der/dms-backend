@@ -19,7 +19,7 @@ app.use(express.json());
 app.use("/api/Auth", authRoutes);
 app.use("/api/Login", loginRoutes);
 app.use("/api/folders", folderRoutes);
-
+app.use("/api/files", folderRoutes);
 app.get("/", (req, res) => {
   res.send("API Running 🚀");
 });

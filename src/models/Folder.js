@@ -28,8 +28,16 @@ const folderSchema = new mongoose.Schema(
       index: true,
     },
     isFavorite: { type: Boolean, default: false },
-    comments: [folderCommentSchema],
-
+    comments: {
+      type: [folderCommentSchema],
+      default: [],
+    },
+    type: {
+      type: String,
+      required: true,
+      enum: ["FOLDER", "FILE"],
+      default: "FOLDER",
+    },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },

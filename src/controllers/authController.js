@@ -6,7 +6,7 @@ import crypto from "crypto";
 
 const generateAccessToken = (user) => {
   return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: "15m",
+    expiresIn: "1d",
   });
 };
 
@@ -31,7 +31,7 @@ export const refreshTokenHandler = async (req, res) => {
     const newAccessToken = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" },
+      { expiresIn: "1d" },
     );
 
     res.json({ jwtToken: newAccessToken });
