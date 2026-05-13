@@ -1,12 +1,6 @@
 import express from "express";
 import multer from "multer";
-
-import {
-  createFolder,
-  deleteFolders,
-  updateFolder,
-  uploadFolder,
-} from "../controllers/folderController.js";
+import { uploadFile } from "../controllers/fileController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -18,7 +12,6 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
   },
-
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
   },
@@ -28,13 +21,7 @@ const upload = multer({
   storage,
 });
 
-// Create folder
-router.post("/", createFolder);
-// Upload actual folder
-router.post("/upload", upload.array("files"), uploadFolder);
-
-router.put("/update-folder/:folderId", updateFolder);
-
-router.delete("/delete-folders", deleteFolders);
+// Upload single file
+router.post("/upload", upload.single("file"), uploadFile);
 
 export default router;

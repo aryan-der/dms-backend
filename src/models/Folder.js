@@ -12,6 +12,14 @@ const folderCommentSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+const breadcrumbSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    id: { type: mongoose.Schema.Types.ObjectId, ref: "Folder", default: null },
+  },
+  { _id: false },
+);
+
 const folderSchema = new mongoose.Schema(
   {
     ownerId: {
@@ -30,6 +38,10 @@ const folderSchema = new mongoose.Schema(
     isFavorite: { type: Boolean, default: false },
     comments: {
       type: [folderCommentSchema],
+      default: [],
+    },
+    breadcrumb: {
+      type: [breadcrumbSchema],
       default: [],
     },
     type: {

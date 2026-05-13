@@ -28,10 +28,32 @@ export const createFolder = async (req, res) => {
       });
     }
 
+    let breadcrumb = [
+      {
+        name: "Home",
+        id: null,
+      },
+    ];
+
+    if (parentFolderId) {
+      const parentFolder = await Folder.findById(parentFolderId);
+
+      if (parentFolder) {
+        breadcrumb = [
+          ...parentFolder.breadcrumb,
+          {
+            name: parentFolder.name,
+            id: parentFolder._id,
+          },
+        ];
+      }
+    }
+
     const folder = await Folder.create({
       ownerId,
       name,
       parentFolderId,
+      breadcrumb,
       type: "FOLDER",
     });
 
@@ -50,7 +72,6 @@ export const createFolder = async (req, res) => {
 export const uploadFolder = async (req, res) => {
   try {
     const ownerId = req.user.id;
-
     const uploadedFiles = req.files;
 
     const paths = Array.isArray(req.body.paths)
@@ -94,17 +115,34 @@ export const uploadFolder = async (req, res) => {
       let currentPath = "";
 
       // Create folders recursively
+      // Create folders recursively
       for (const folderName of pathParts) {
         currentPath += `/${folderName}`;
 
-        // Already cached
         if (createdFoldersMap[currentPath]) {
           currentParentId = createdFoldersMap[currentPath];
-
           continue;
         }
 
-        // Check existing folder
+        // ✅ FIX: currentParentId use karo, parentFolderId nahi
+        let breadcrumb = [{ name: "Home", id: null }];
+
+        if (currentParentId) {
+          const parentFolder = await Folder.findById(currentParentId);
+
+          if (parentFolder) {
+            breadcrumb = [
+              ...(parentFolder.breadcrumb?.length
+                ? parentFolder.breadcrumb
+                : [{ name: "Home", id: null }]),
+              {
+                name: parentFolder.name,
+                id: parentFolder._id,
+              },
+            ];
+          }
+        }
+
         let folder = await Folder.findOne({
           ownerId,
           name: folderName,
@@ -112,19 +150,17 @@ export const uploadFolder = async (req, res) => {
           isDeleted: false,
         });
 
-        // Create if not exists
         if (!folder) {
           folder = await Folder.create({
             ownerId,
             name: folderName,
             parentFolderId: currentParentId,
             type: "FOLDER",
+            breadcrumb,
           });
         }
 
-        // Cache folder
         createdFoldersMap[currentPath] = folder._id;
-
         currentParentId = folder._id;
       }
 
@@ -164,65 +200,61 @@ export const uploadFolder = async (req, res) => {
   }
 };
 
-/*  UPLOAD FILE */
-export const uploadFile = async (req, res) => {
+/* UPDATE FOLDER */
+export const updateFolder = async (req, res) => {
   try {
     const ownerId = req.user.id;
 
-    const { folderId = null } = req.body;
+    const { folderId } = req.params;
 
-    const file = req.file;
+    const { name } = req.body;
 
-    if (!file) {
+    if (!folderId) {
       return res.status(400).json({
-        message: "No file uploaded",
+        message: "Folder id required",
       });
     }
 
-    // Validate folder
-    if (folderId) {
-      const folder = await Folder.findOne({
-        _id: folderId,
-        ownerId,
-        isDeleted: false,
-        type: "FOLDER",
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        message: "Folder name required",
       });
-
-      if (!folder) {
-        return res.status(404).json({
-          message: "Parent folder not found",
-        });
-      }
     }
 
-    // Duplicate check
-    const existing = await File.findOne({
+    const folder = await Folder.findOne({
+      _id: folderId,
       ownerId,
-      folderId,
-      name: file.originalname,
       isDeleted: false,
     });
 
-    if (existing) {
-      return res.status(400).json({
-        message: "File with this name already exists",
+    if (!folder) {
+      return res.status(404).json({
+        message: "Folder not found",
       });
     }
 
-    const newFile = await File.create({
+    // Duplicate check
+    const existingFolder = await Folder.findOne({
+      _id: { $ne: folderId },
       ownerId,
-      name: file.originalname,
-      folderId,
-      type: "FILE",
-      mimeType: file.mimetype,
-      size: file.size,
-      path: file.path,
-      originalName: file.originalname,
+      parentFolderId: folder.parentFolderId,
+      name: name.trim(),
+      isDeleted: false,
     });
 
-    return res.status(201).json({
-      message: "File uploaded successfully",
-      file: newFile,
+    if (existingFolder) {
+      return res.status(400).json({
+        message: "Folder with same name already exists",
+      });
+    }
+
+    folder.name = name.trim();
+
+    await folder.save();
+
+    return res.status(200).json({
+      message: "Folder updated successfully",
+      folder,
     });
   } catch (error) {
     return res.status(500).json({
@@ -231,35 +263,72 @@ export const uploadFile = async (req, res) => {
   }
 };
 
-/* GET FOLDER CONTENT */
-export const getFolderContent = async (req, res) => {
+/* DELETE FOLDERS */
+export const deleteFolders = async (req, res) => {
   try {
     const ownerId = req.user.id;
 
-    const { parentFolderId } = req.query;
+    const { folderIds } = req.body;
 
-    const currentParentFolderId = parentFolderId || null;
+    if (!Array.isArray(folderIds) || folderIds.length === 0) {
+      return res.status(400).json({
+        message: "folderIds array required",
+      });
+    }
 
-    // Folders
-    const folders = await Folder.find({
-      ownerId,
-      parentFolderId: currentParentFolderId,
-      isDeleted: false,
-    });
+    // Recursive delete function
+    const deleteFolderRecursively = async (currentFolderId) => {
+      // Find child folders
+      const childFolders = await Folder.find({
+        parentFolderId: currentFolderId,
+        ownerId,
+        isDeleted: false,
+      });
 
-    // Files
-    const files = await File.find({
-      ownerId,
-      folderId: currentParentFolderId,
-      isDeleted: { $ne: true },
-    });
+      // Delete child folders recursively
+      for (const child of childFolders) {
+        await deleteFolderRecursively(child._id);
+      }
 
-    return res.json({
-      message: "Folder content fetched successfully",
-      data: {
-        folders,
-        files,
-      },
+      // Delete files
+      await File.updateMany(
+        {
+          folderId: currentFolderId,
+          ownerId,
+          isDeleted: false,
+        },
+        {
+          $set: {
+            isDeleted: true,
+          },
+        },
+      );
+
+      // Delete folder
+      await Folder.findByIdAndUpdate(currentFolderId, {
+        $set: {
+          isDeleted: true,
+        },
+      });
+    };
+
+    // Delete all selected folders
+    for (const folderId of folderIds) {
+      const folder = await Folder.findOne({
+        _id: folderId,
+        ownerId,
+        isDeleted: false,
+      });
+
+      if (!folder) {
+        continue;
+      }
+
+      await deleteFolderRecursively(folderId);
+    }
+
+    return res.status(200).json({
+      message: "Folders deleted successfully",
     });
   } catch (error) {
     return res.status(500).json({
