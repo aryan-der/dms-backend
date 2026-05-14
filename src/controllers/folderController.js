@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import AdmZip from "adm-zip";
 import File from "../models/File.js";
 import Folder from "../models/Folder.js";
 
@@ -334,5 +337,177 @@ export const deleteFolders = async (req, res) => {
     return res.status(500).json({
       message: error.message,
     });
+  }
+};
+
+// Move Folders / Files
+export const moveItems = async (req, res) => {
+  try {
+    const ownerId = req.user.id;
+
+    const {
+      folderIds = [],
+      fileIds = [],
+      destinationFolderId = null,
+    } = req.body;
+
+    // Validation
+    if (
+      (!Array.isArray(folderIds) || folderIds.length === 0) &&
+      (!Array.isArray(fileIds) || fileIds.length === 0)
+    ) {
+      return res.status(400).json({
+        message: "At least one folder or file required",
+      });
+    }
+
+    // Optional destination folder check
+    if (destinationFolderId) {
+      const destinationFolder = await Folder.findOne({
+        _id: destinationFolderId,
+        ownerId,
+        isDeleted: false,
+      });
+
+      if (!destinationFolder) {
+        return res.status(404).json({
+          message: "Destination folder not found",
+        });
+      }
+    }
+
+    // Move folders
+    if (folderIds.length > 0) {
+      await Folder.updateMany(
+        {
+          _id: { $in: folderIds },
+          ownerId,
+          isDeleted: false,
+        },
+        {
+          $set: {
+            parentFolderId: destinationFolderId,
+          },
+        },
+      );
+    }
+
+    // Move files
+    if (fileIds.length > 0) {
+      await File.updateMany(
+        {
+          _id: { $in: fileIds },
+          ownerId,
+          isDeleted: false,
+        },
+        {
+          $set: {
+            folderId: destinationFolderId,
+          },
+        },
+      );
+    }
+
+    return res.status(200).json({
+      message: "Items moved successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+// Download folders / files
+export const downloadItems = async (req, res) => {
+  try {
+    const ownerId = req.user.id;
+    const { folderIds = [], fileIds = [] } = req.body;
+
+    if (folderIds.length === 0 && fileIds.length === 0) {
+      return res.status(400).json({ message: "No items selected" });
+    }
+
+    let filesToDownload = [];
+
+    // Recursive folder scan
+    const collectFolderFiles = async (folderId, relativePath = "") => {
+      const files = await File.find({ folderId, ownerId, isDeleted: false });
+
+      for (const file of files) {
+        filesToDownload.push({
+          ...file.toObject(),
+          zipPath: relativePath
+            ? path.join(relativePath, file.name)
+            : file.name,
+        });
+      }
+
+      const childFolders = await Folder.find({
+        parentFolderId: folderId,
+        ownerId,
+        isDeleted: false,
+      });
+
+      for (const child of childFolders) {
+        await collectFolderFiles(
+          child._id,
+          path.join(relativePath, child.name),
+        );
+      }
+    };
+
+    // Collect files from folders
+    for (const folderId of folderIds) {
+      const folder = await Folder.findById(folderId);
+      const rootName = folder ? folder.name : String(folderId);
+      await collectFolderFiles(folderId, rootName);
+    }
+
+    // Direct selected files
+    const selectedFiles = await File.find({
+      _id: { $in: fileIds },
+      ownerId,
+      isDeleted: false,
+    });
+
+    for (const file of selectedFiles) {
+      filesToDownload.push({ ...file.toObject(), zipPath: file.name });
+    }
+
+    // Remove duplicates
+    const seen = new Map();
+    for (const f of filesToDownload) {
+      if (!seen.has(f._id.toString())) seen.set(f._id.toString(), f);
+    }
+    const uniqueFiles = [...seen.values()];
+
+    // Single file direct download
+    if (uniqueFiles.length === 1 && folderIds.length === 0) {
+      const file = uniqueFiles[0];
+      return res.download(file.path, file.name);
+    }
+
+    // ZIP download using adm-zip
+    const zip = new AdmZip();
+
+    for (const file of uniqueFiles) {
+      if (fs.existsSync(file.path)) {
+        const fileData = fs.readFileSync(file.path);
+        const zipDir = path.dirname(file.zipPath); // preserves folder structure
+        zip.addFile(file.zipPath, fileData, "", zipDir === "." ? "" : zipDir);
+      }
+    }
+
+    const zipBuffer = zip.toBuffer();
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="download.zip"`);
+    res.setHeader("Content-Length", zipBuffer.length);
+    return res.end(zipBuffer);
+  } catch (error) {
+    if (!res.headersSent) {
+      return res.status(500).json({ message: error.message });
+    }
   }
 };

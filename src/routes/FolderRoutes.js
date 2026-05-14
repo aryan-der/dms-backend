@@ -4,6 +4,8 @@ import multer from "multer";
 import {
   createFolder,
   deleteFolders,
+  downloadItems,
+  moveItems,
   updateFolder,
   uploadFolder,
 } from "../controllers/folderController.js";
@@ -28,13 +30,11 @@ const upload = multer({
   storage,
 });
 
-// Create folder
 router.post("/", createFolder);
-// Upload actual folder
 router.post("/upload", upload.array("files"), uploadFolder);
-
 router.put("/update-folder/:folderId", updateFolder);
-
 router.delete("/delete-folders", deleteFolders);
+router.put("/move-items", moveItems);
+router.post("/download-items", downloadItems);
 
 export default router;
