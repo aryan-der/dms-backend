@@ -10,7 +10,6 @@ export const createFolder = async (req, res) => {
     const ownerId = req.user.id;
 
     const { name, parentFolderId = null } = req.body;
-
     if (!name) {
       return res.status(400).json({
         message: "Folder name required",
@@ -82,7 +81,6 @@ export const uploadFolder = async (req, res) => {
       : [req.body.paths];
 
     const parentFolderId = req.body.parentFolderId || null;
-
     if (!uploadedFiles?.length) {
       return res.status(400).json({
         message: "No files uploaded",

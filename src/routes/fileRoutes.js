@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { uploadFile } from "../controllers/fileController.js";
+import { uploadFile, viewFile } from "../controllers/fileController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -23,5 +23,6 @@ const upload = multer({
 
 // Upload single file
 router.post("/upload", upload.single("file"), uploadFile);
+router.get("/view/:id", viewFile);
 
 export default router;

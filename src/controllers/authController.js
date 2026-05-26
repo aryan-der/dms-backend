@@ -205,11 +205,7 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({ message: "Failed to reset password." });
   }
 };
-/**
- * Logout user by invalidating their refresh token.
- * - Expects refresh token on cookie or body (for stateless JWT, token is just removed client-side)
- * - Ensures server-side refresh token storage is cleared for security
- */
+
 export const logout = async (req, res) => {
   try {
     // Check if refresh token is provided
