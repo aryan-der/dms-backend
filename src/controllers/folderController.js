@@ -265,71 +265,112 @@ export const updateFolder = async (req, res) => {
 };
 
 /* DELETE FOLDERS */
-export const deleteFolders = async (req, res) => {
+export const deleteItems = async (req, res) => {
   try {
     const ownerId = req.user.id;
 
-    const { folderIds } = req.body;
+    let { folderIds = [], fileIds = [] } = req.body;
 
-    if (!Array.isArray(folderIds) || folderIds.length === 0) {
+    // Single support
+    if (!Array.isArray(folderIds)) {
+      folderIds = folderIds ? [folderIds] : [];
+    }
+
+    if (!Array.isArray(fileIds)) {
+      fileIds = fileIds ? [fileIds] : [];
+    }
+
+    // Nothing selected
+    if (folderIds.length === 0 && fileIds.length === 0) {
       return res.status(400).json({
-        message: "folderIds array required",
+        message: "folderIds or fileIds required",
       });
     }
 
-    // Recursive delete function
+    /* DELETE PHYSICAL FILE */
+    const deletePhysicalFile = (filePath) => {
+      try {
+        if (!filePath) return;
+
+        const fullPath = path.join(process.cwd(), filePath);
+
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      } catch (error) {
+        console.log("Physical file delete error:", error.message);
+      }
+    };
+
+    /* DELETE FOLDER RECURSIVELY */
     const deleteFolderRecursively = async (currentFolderId) => {
-      // Find child folders
+      // Child folders
       const childFolders = await Folder.find({
         parentFolderId: currentFolderId,
         ownerId,
         isDeleted: false,
       });
 
-      // Delete child folders recursively
+      // Recursive delete
       for (const child of childFolders) {
         await deleteFolderRecursively(child._id);
       }
 
-      // Delete files
-      await File.updateMany(
-        {
-          folderId: currentFolderId,
-          ownerId,
-          isDeleted: false,
-        },
-        {
-          $set: {
-            isDeleted: true,
-          },
-        },
-      );
-
-      // Delete folder
-      await Folder.findByIdAndUpdate(currentFolderId, {
-        $set: {
-          isDeleted: true,
-        },
-      });
-    };
-
-    // Delete all selected folders
-    for (const folderId of folderIds) {
-      const folder = await Folder.findOne({
-        _id: folderId,
+      // Files inside current folder
+      const files = await File.find({
+        folderId: currentFolderId,
         ownerId,
         isDeleted: false,
       });
 
-      if (!folder) {
-        continue;
+      // Delete physical files
+      for (const file of files) {
+        deletePhysicalFile(file.path);
       }
+
+      // Delete files from DB
+      await File.deleteMany({
+        folderId: currentFolderId,
+        ownerId,
+      });
+
+      // Delete folder from DB
+      await Folder.findByIdAndDelete(currentFolderId);
+    };
+
+    /* DELETE SELECTED FOLDERS */
+    for (const folderId of folderIds) {
+      const folder = await Folder.findOne({
+        _id: folderId,
+        ownerId,
+      });
+
+      if (!folder) continue;
 
       await deleteFolderRecursively(folderId);
     }
 
+    /* DELETE SELECTED FILES */
+    if (fileIds.length > 0) {
+      const files = await File.find({
+        _id: { $in: fileIds },
+        ownerId,
+      });
+
+      // Delete physical files
+      for (const file of files) {
+        deletePhysicalFile(file.path);
+      }
+
+      // Delete from DB
+      await File.deleteMany({
+        _id: { $in: fileIds },
+        ownerId,
+      });
+    }
+
     return res.status(200).json({
-      message: "Folders deleted successfully",
+      message: "Selected items deleted successfully",
     });
   } catch (error) {
     return res.status(500).json({

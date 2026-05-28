@@ -148,3 +148,120 @@ export const viewFile = async (req, res) => {
     });
   }
 };
+
+// Update File
+export const updateFile = async (req, res) => {
+  try {
+    const ownerId = req.user.id;
+
+    const { fileId } = req.params;
+
+    const { name } = req.body;
+
+    if (!fileId) {
+      return res.status(400).json({
+        message: "File id required",
+      });
+    }
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        message: "File name required",
+      });
+    }
+
+    const file = await File.findOne({
+      _id: fileId,
+      ownerId,
+      isDeleted: false,
+    });
+
+    if (!file) {
+      return res.status(404).json({
+        message: "File not found",
+      });
+    }
+
+    // Duplicate check
+    const existingFile = await File.findOne({
+      _id: { $ne: fileId },
+      ownerId,
+      parentFolderId: file.parentFolderId,
+      name: name.trim(),
+      isDeleted: false,
+    });
+
+    if (existingFile) {
+      return res.status(400).json({
+        message: "File with same name already exists",
+      });
+    }
+
+    file.name = name.trim();
+
+    await file.save();
+
+    return res.status(200).json({
+      message: "File updated successfully",
+      file,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+export const deleteFiles = async (req, res) => {
+  try {
+    const ownerId = req.user.id;
+
+    // Support both single ID (param or body) and multiple IDs (body)
+    let fileIds;
+
+    if (req.body.fileIds !== undefined) {
+      // Received in body: array or single ID
+      if (Array.isArray(req.body.fileIds)) {
+        fileIds = req.body.fileIds;
+      } else if (req.body.fileIds) {
+        fileIds = [req.body.fileIds];
+      } else {
+        fileIds = [];
+      }
+    } else if (req.params.fileId) {
+      // Received in URL param
+      fileIds = [req.params.fileId];
+    } else {
+      fileIds = [];
+    }
+
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return res.status(400).json({
+        message:
+          "At least one fileId must be provided (in fileIds[] or as fileId param)",
+      });
+    }
+
+    const result = await File.updateMany(
+      {
+        _id: { $in: fileIds },
+        ownerId,
+        isDeleted: false,
+      },
+      {
+        $set: {
+          isDeleted: true,
+        },
+      },
+    );
+
+    return res.status(200).json({
+      message: "File(s) deleted successfully",
+      modifiedCount: result.nModified ?? result.modifiedCount,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message,
+    });
+  }
+};

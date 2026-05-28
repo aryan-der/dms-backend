@@ -3,7 +3,7 @@ import multer from "multer";
 
 import {
   createFolder,
-  deleteFolders,
+  deleteItems,
   downloadItems,
   moveItems,
   updateFolder,
@@ -33,7 +33,7 @@ const upload = multer({
 router.post("/", createFolder);
 router.post("/upload", upload.array("files"), uploadFolder);
 router.put("/update-folder/:folderId", updateFolder);
-router.delete("/delete-folders", deleteFolders);
+router.delete("/delete-items", deleteItems);
 router.put("/move-items", moveItems);
 router.post("/download-items", downloadItems);
 
