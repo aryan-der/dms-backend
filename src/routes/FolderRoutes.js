@@ -2,10 +2,12 @@ import express from "express";
 import multer from "multer";
 
 import {
+  accessShare,
   createFolder,
   deleteItems,
   downloadItems,
   moveItems,
+  shareItems,
   updateFolder,
   uploadFolder,
 } from "../controllers/folderController.js";
@@ -36,5 +38,7 @@ router.put("/update-folder/:folderId", updateFolder);
 router.delete("/delete-items", deleteItems);
 router.put("/move-items", moveItems);
 router.post("/download-items", downloadItems);
+router.post("/share", shareItems);
+router.post("/share/:token/access", accessShare);
 
 export default router;

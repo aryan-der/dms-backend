@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import File from "../models/File.js";
 import Folder from "../models/Folder.js";
+import Share from "../models/Share.js";
+import dayjs from "dayjs";
 
 /* GET FOLDER CONTENT */
 export const getFolderContent = async (req, res) => {
@@ -55,6 +57,42 @@ export const getFolderContent = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: error.message,
+    });
+  }
+};
+
+// Share
+export const getShareInfo = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const share = await Share.findOne({ token });
+
+    if (!share) {
+      return res.status(404).json({
+        success: false,
+        message: "Share link not found or expired",
+      });
+    }
+
+    // Expiry check
+    if (share.expiryDate && dayjs().isAfter(share.expiryDate)) {
+      return res.status(410).json({
+        success: false,
+        message: "This share link has expired",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      shareType: share.shareType,
+      allowDownload: share.allowDownload,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
     });
   }
 };

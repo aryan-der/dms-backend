@@ -3,6 +3,11 @@ import path from "path";
 import AdmZip from "adm-zip";
 import File from "../models/File.js";
 import Folder from "../models/Folder.js";
+import bcrypt from "bcryptjs";
+import { nanoid } from "nanoid";
+import dayjs from "dayjs";
+import Share from "../models/Share.js";
+import { sendShareEmail } from "../utils/sendEmail.js";
 
 /* CREATE FOLDER */
 export const createFolder = async (req, res) => {
@@ -548,5 +553,175 @@ export const downloadItems = async (req, res) => {
     if (!res.headersSent) {
       return res.status(500).json({ message: error.message });
     }
+  }
+};
+
+// Share
+export const shareItems = async (req, res) => {
+  console.log("BODY =>", req.body);
+  console.log("USER =>", req.user);
+  try {
+    const {
+      folderIds = [],
+      fileIds = [],
+      shareType,
+      password,
+      emails = [],
+      phones = [],
+      allowDownload = true,
+      expiryDays = 7,
+    } = req.body;
+
+    if (folderIds.length === 0 && fileIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select at least one file or folder",
+      });
+    }
+
+    if (!["public", "private"].includes(shareType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid share type",
+      });
+    }
+
+    if (shareType === "private" && !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required for private sharing",
+      });
+    }
+
+    const token = nanoid(32);
+    const shareData = {
+      token,
+      shareType,
+      folderIds,
+      fileIds,
+      emails,
+      phones,
+      allowDownload,
+      createdBy: req.user.id,
+    };
+
+    if (expiryDays) {
+      shareData.expiryDate = dayjs().add(expiryDays, "day").toDate();
+    }
+
+    if (shareType === "private") {
+      shareData.passwordHash = await bcrypt.hash(password, 10);
+    }
+    const share = await Share.create(shareData);
+
+    const shareUrl = `${process.env.CLIENT_URL}/share/${token}`;
+
+    // Email block
+    if (emails.length) {
+      const emailPromises = emails.map((email) =>
+        sendShareEmail({
+          to: email,
+          link: shareUrl,
+          password: shareType === "private" ? password : null,
+          expiryDays,
+        }).catch((err) => console.error(`Email failed for ${email}:`, err)),
+      );
+
+      await Promise.all(emailPromises);
+    }
+
+    const whatsappLinks = [];
+    if (shareType === "private" && phones.length) {
+      for (const phone of phones) {
+        const message = `A secure file has been shared with you. Link:${shareUrl} Password: ${password} `;
+        whatsappLinks.push({
+          phone,
+          url: `https://wa.me/${phone.replace(
+            /\+/g,
+            "",
+          )}?text=${encodeURIComponent(message)}`,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Items shared successfully",
+
+      share: {
+        id: share._id,
+        token,
+        shareType,
+        shareUrl,
+        expiryDate: share.expiryDate,
+      },
+      whatsappLinks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to share items",
+    });
+  }
+};
+
+// Access Share
+export const accessShare = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body; // Private mate
+
+    const share = await Share.findOne({ token })
+      .populate("fileIds")
+      .populate("folderIds");
+
+    if (!share) {
+      return res.status(404).json({
+        success: false,
+        message: "Share link not found",
+      });
+    }
+
+    // Expiry check
+    if (share.expiryDate && dayjs().isAfter(share.expiryDate)) {
+      return res.status(410).json({
+        success: false,
+        message: "This share link has expired",
+      });
+    }
+
+    // Private hoi to password verify karo
+    if (share.shareType === "private") {
+      if (!password) {
+        return res.status(401).json({
+          success: false,
+          message: "Password is required",
+        });
+      }
+
+      const isValid = await bcrypt.compare(password, share.passwordHash);
+
+      if (!isValid) {
+        return res.status(401).json({
+          success: false,
+          message: "Incorrect password",
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      allowDownload: share.allowDownload,
+      files: share.fileIds,
+      folders: share.folderIds,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
   }
 };
