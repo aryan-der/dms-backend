@@ -558,8 +558,6 @@ export const downloadItems = async (req, res) => {
 
 // Share
 export const shareItems = async (req, res) => {
-  console.log("BODY =>", req.body);
-  console.log("USER =>", req.user);
   try {
     const {
       folderIds = [],
@@ -671,7 +669,7 @@ export const shareItems = async (req, res) => {
 export const accessShare = async (req, res) => {
   try {
     const { token } = req.params;
-    const { password } = req.body; // Private mate
+    const { password } = req.body;
 
     const share = await Share.findOne({ token })
       .populate("fileIds")
@@ -700,8 +698,7 @@ export const accessShare = async (req, res) => {
           message: "Password is required",
         });
       }
-
-      const isValid = await bcrypt.compare(password, share.passwordHash);
+      const isValid = bcrypt.compareSync(password, share.passwordHash);
 
       if (!isValid) {
         return res.status(401).json({

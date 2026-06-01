@@ -15,8 +15,6 @@ import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.use(verifyToken);
-
 // Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -32,13 +30,13 @@ const upload = multer({
   storage,
 });
 
-router.post("/", createFolder);
-router.post("/upload", upload.array("files"), uploadFolder);
-router.put("/update-folder/:folderId", updateFolder);
-router.delete("/delete-items", deleteItems);
-router.put("/move-items", moveItems);
-router.post("/download-items", downloadItems);
-router.post("/share", shareItems);
+router.post("/", verifyToken, createFolder);
+router.post("/upload", upload.array("files"), verifyToken, uploadFolder);
+router.put("/update-folder/:folderId", verifyToken, updateFolder);
+router.delete("/delete-items", verifyToken, deleteItems);
+router.put("/move-items", verifyToken, moveItems);
+router.post("/download-items", verifyToken, downloadItems);
+router.post("/share", verifyToken, shareItems);
 router.post("/share/:token/access", accessShare);
 
 export default router;

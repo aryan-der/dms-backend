@@ -7,9 +7,7 @@ import {
 
 const router = express.Router();
 
-router.use(verifyToken);
-
 // Get folder content
-router.get("/content", getFolderContent);
+router.get("/content", verifyToken, getFolderContent);
 router.get("/share/:token", getShareInfo);
 export default router;
