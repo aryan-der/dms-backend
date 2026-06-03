@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 import dayjs from "dayjs";
 import Share from "../models/Share.js";
 import { sendShareEmail } from "../utils/sendEmail.js";
+import { getAllFolderContents } from "../utils/folderUtils.js";
 
 /* CREATE FOLDER */
 export const createFolder = async (req, res) => {
@@ -670,7 +671,6 @@ export const accessShare = async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-
     const share = await Share.findOne({ token })
       .populate("fileIds")
       .populate("folderIds");
@@ -682,7 +682,7 @@ export const accessShare = async (req, res) => {
       });
     }
 
-    // Expiry check
+    // Expiry Check
     if (share.expiryDate && dayjs().isAfter(share.expiryDate)) {
       return res.status(410).json({
         success: false,
@@ -690,7 +690,7 @@ export const accessShare = async (req, res) => {
       });
     }
 
-    // Private hoi to password verify karo
+    // Password Check
     if (share.shareType === "private") {
       if (!password) {
         return res.status(401).json({
@@ -698,6 +698,7 @@ export const accessShare = async (req, res) => {
           message: "Password is required",
         });
       }
+
       const isValid = bcrypt.compareSync(password, share.passwordHash);
 
       if (!isValid) {
@@ -708,14 +709,43 @@ export const accessShare = async (req, res) => {
       }
     }
 
+    // ==========================
+    // Shared Files & Folders
+    // ==========================
+
+    let allFolders = [...share.folderIds];
+    let allFiles = [...share.fileIds];
+
+    // Shared folders ni andar na folders/files
+    for (const folder of share.folderIds) {
+      const nestedData = await getAllFolderContents(folder._id);
+
+      allFolders.push(...nestedData.folders);
+      allFiles.push(...nestedData.files);
+    }
+
+    // Remove Duplicate Folders
+    allFolders = [
+      ...new Map(
+        allFolders.map((folder) => [folder._id.toString(), folder]),
+      ).values(),
+    ];
+
+    // Remove Duplicate Files
+    allFiles = [
+      ...new Map(allFiles.map((file) => [file._id.toString(), file])).values(),
+    ];
+
     return res.status(200).json({
       success: true,
       allowDownload: share.allowDownload,
-      files: share.fileIds,
-      folders: share.folderIds,
+      files: allFiles,
+      folders: allFolders,
+      directFileIds: share.fileIds.map((file) => file._id.toString()),
     });
   } catch (error) {
     console.error(error);
+
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
