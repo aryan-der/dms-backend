@@ -17,8 +17,8 @@ connectDB();
 
 app.use(
   cors({
-    origin: "http://localhost:5173", // * નહીં, exact origin
-    credentials: true, // ← આ જરૂરી છે
+    origin: "http://localhost:5173",
+    credentials: true,
   }),
 );
 app.use(express.json());
